@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Voz → Partículas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+</head>
+<body>
+<script>
+let recog, texto = "di una palabra", particles = [], pg;
+const NP = 1200;     // cantidad de partículas
+const gap = 6;       // muestreo del mapa de texto (px)
+const tam = 160;     // tamaño del texto
+
+function setup(){
+  createCanvas(windowWidth, windowHeight);
+  pg = createGraphics(width, height);
+  initSpeech();
+  generarParticulasDesdeTexto(texto);
+  background(0);
+}
+
+function windowResized(){
+  resizeCanvas(windowWidth, windowHeight);
+  pg = createGraphics(width, height);
+  generarParticulasDesdeTexto(texto);
+}
+
+function initSpeech(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ console.warn("Web Speech API no disponible"); return; }
+  recog = new SR();
+  recog.lang = "es-AR"; // usa es-ES si prefieres
+  recog.interimResults = false;
+  recog.continuous = true;
+  recog.onresult = e=>{
+    const r = e.results[e.results.length-1][0].transcript.trim();
+    if(r.length>0){
+      texto = r.toUpperCase();
+      generarParticulasDesdeTexto(texto);
+    }
+  };
+  recog.onerror = e=>console.warn(e.error);
+  recog.onend = ()=>recog && recog.start();
+  recog.start();
+}
+
+function generarParticulasDesdeTexto(t){
+  // Render de texto en buffer
+  pg.clear();
+  pg.pixelDensity(1);
+  pg.push();
+  pg.background(0,0);
+  pg.textAlign(CENTER, CENTER);
+  pg.textSize(tam);
+  pg.textStyle(BOLD);
+  pg.fill(255);
+  pg.noStroke();
+  pg.translate(width/2, height/2);
+  pg.text(t, 0, 0);
+  pg.pop();
+  pg.loadPixels();
+
+  // Amostrar puntos blancos del texto
+  const targets = [];
+  for(let y=0; y<height; y+=gap){
+    for(let x=0; x<width; x+=gap){
+      const idx = 4*(y*width + x);
+      if(pg.pixels[idx+3] > 128){ // alpha
+        targets.push(createVector(x, y));
+      }
+    }
+  }
+
+  // Crear/actualizar partículas
+  const total = min(NP, targets.length);
+  if(particles.length < total){
+    for(let i=particles.length; i<total; i++){
+      particles.push(nuevaParticula(random(width), random(height)));
+    }
+  }else if(particles.length > total){
+    particles.length = total;
+  }
+
+  // asignar objetivos
+  shuffleArray(targets);
+  for(let i=0; i<particles.length; i++){
+    particles[i].target = targets[i].copy();
+  }
+}
+
+function nuevaParticula(x,y){
+  return {
+    pos: createVector(x,y),
+    vel: p5.Vector.random2D().mult(random(2)),
+    acc: createVector(0,0),
+    target: createVector(x,y),
+    maxSpeed: 8,
+    maxForce: 0.6,
+    r: 2 + random(1.5),
+  };
+}
+
+function draw(){
+  // fondo con leve estela
+  background(0, 40);
+
+  // ruido para “respirar”
+  const t = millis()*0.0004;
+
+  // dibujar partículas
+  noStroke();
+  for(const p of particles){
+    // steering hacia target (arrive)
+    const desired = p5.Vector.sub(p.target, p.pos);
+    const d = desired.mag();
+    const speed = (d<60) ? map(d,0,60,0, p.maxSpeed) : p.maxSpeed;
+    desired.setMag(speed);
+
+    const steer = p5.Vector.sub(desired, p.vel);
+    steer.limit(p.maxForce);
+
+    // ligera turbulencia
+    const n = noise(p.pos.x*0.005, p.pos.y*0.005, t);
+    const ang = map(n,0,1,-PI,PI);
+    const flow = p5.Vector.fromAngle(ang).mult(0.15);
+
+    p.acc.set(0,0);
+    p.acc.add(steer).add(flow);
+
+    p.vel.add(p.acc);
+    p.vel.limit(p.maxSpeed);
+    p.pos.add(p.vel);
+
+    // brillo suave
+    const a = constrain(map(d,0,120,255,40), 40, 255);
+    fill(255, a);
+    circle(p.pos.x, p.pos.y, p.r);
+  }
+}
+
+// util
+function shuffleArray(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+}
+</script>
+</body>
+</html>
