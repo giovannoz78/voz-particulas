@@ -7,8 +7,9 @@
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
   #ui{position:fixed;left:16px;top:16px;z-index:9999}
-  #btn{padding:8px 12px;border-radius:6px;border:0;background:#1e90ff;color:#fff;font-weight:600}
-  #msg{margin-top:6px;color:#9cf;font:12px/1.4 monospace;white-space:pre-wrap;max-width:60vw}
+  #btn{padding:8px 12px;border-radius:6px;border:0;background:#1e90ff;color:#fff;font-weight:700}
+  #msg{margin-top:6px;color:#9cf;font:12px/1.4 monospace;white-space:pre-wrap;max-width:70vw}
+  #out{position:fixed;left:16px;bottom:16px;z-index:9999;color:#fff;font:700 28px/1.2 system-ui, sans-serif;text-shadow:0 0 10px #08f}
   canvas.p5Canvas{position:fixed !important;inset:0;z-index:0 !important;display:block}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
@@ -16,15 +17,16 @@
 <body>
 <div id="ui">
   <button id="btn">Iniciar</button>
-  <div id="msg">Permite micrófono → clic “Iniciar”.</div>
+  <div id="msg">Permite micrófono y haz clic “Iniciar”.</div>
 </div>
+<div id="out">di una palabra</div>
 
 <script>
 let recog, escuchando=false, texto="di una palabra", particles=[], pg;
 const NP=1200, gap=6, tam=160;
-const $btn=document.getElementById('btn'), $msg=document.getElementById('msg');
-const log=m=>{ $msg.textContent=m; console.log(m); };
-const append=m=>{ $msg.textContent += "\n"+m; console.log(m); };
+const $btn=document.getElementById('btn'), $msg=document.getElementById('msg'), $out=document.getElementById('out');
+const log=m=>{$msg.textContent=m; console.log(m);};
+const append=m=>{$msg.textContent+="\n"+m; console.log(m);};
 
 function setup(){
   const c=createCanvas(windowWidth, windowHeight);
@@ -45,18 +47,15 @@ function initSpeech(){
   if(!SR){ log("Web Speech API no disponible (usa Chrome en https)."); return; }
   recog = new SR();
   recog.lang = "es-ES";          // probá "es-AR" si querés
-  recog.interimResults = true;   // resultados en vivo
+  recog.interimResults = true;   // texto en vivo
   recog.continuous = true;
   recog.maxAlternatives = 1;
 
-  recog.onstart      = ()=>log("Escuchando…");
-  recog.onaudiostart = ()=>append("Audio ON");
-  recog.onsoundstart = ()=>append("Sound ON");
-  recog.onspeechstart= ()=>append("Speech ON");
-  recog.onspeechend  = ()=>append("Speech END");
-  recog.onaudioend   = ()=>append("Audio END");
-  recog.onnomatch    = ()=>append("No match");
-  recog.onend        = ()=>{ append("End"); if(escuchando){ try{recog.start();}catch(_){}} };
+  recog.onstart=()=>log("Escuchando…");
+  recog.onaudiostart=()=>append("Audio ON");
+  recog.onspeechstart=()=>append("Speech ON");
+  recog.onspeechend=()=>append("Speech END");
+  recog.onend=()=>{ append("End"); if(escuchando){ try{recog.start();}catch(_){}} };
 
   recog.onresult = e=>{
     const i = e.resultIndex;
@@ -64,14 +63,14 @@ function initSpeech(){
     if(!res || !res[0]) return;
     const txt = res[0].transcript.trim();
     if(!txt) return;
+    $out.textContent = txt;              // ← SIEMPRE verás el texto acá
     texto = txt.toUpperCase();
     generarParticulasDesdeTexto(texto);
-    append((res.isFinal?"Final: ":"Interim: ")+txt+" (conf "+res[0].confidence.toFixed(2)+")");
+    append((res.isFinal?"Final: ":"Interim: ")+txt+" (conf "+(res[0].confidence??0).toFixed(2)+")");
   };
 
   recog.onerror = e=>{
     append("Error: "+e.error);
-    // reintento suave en errores comunes
     if(["no-speech","audio-capture","network","aborted"].includes(e.error)){
       try{recog.stop();}catch(_){}
       setTimeout(()=>{ if(escuchando) try{recog.start();}catch(_){} }, 700);
@@ -82,8 +81,8 @@ function initSpeech(){
 $btn.onclick=()=>{
   if(!recog){ log("Sin soporte de SpeechRecognition."); return; }
   if(!escuchando){
-    try{ recog.abort?.(); }catch(_){}
-    try{ recog.start(); escuchando=true; $btn.textContent="Detener"; }
+    try{recog.abort?.();}catch(_){}
+    try{recog.start(); escuchando=true; $btn.textContent="Detener"; }
     catch(err){ log("No pude iniciar: "+err.message); }
   }else{
     escuchando=false; try{recog.stop();}catch(_){}
@@ -125,4 +124,13 @@ function draw(){
     const steer=p5.Vector.sub(desired,p.vel).limit(p.maxForce);
     const n=noise(p.pos.x*0.005,p.pos.y*0.005,millis()*0.0004);
     const flow=p5.Vector.fromAngle(map(n,0,1,-PI,PI)).mult(0.15);
-    p
+    p.acc.set(0,0); p.acc.add(steer).add(flow);
+    p.vel.add(p.acc).limit(p.maxSpeed);
+    p.pos.add(p.vel);
+    fill(255, constrain(map(d,0,120,255,40),40,255));
+    circle(p.pos.x,p.pos.y,p.r);
+  }
+}
+</script>
+</body>
+</html>
