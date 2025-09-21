@@ -39,7 +39,7 @@ function initSpeech(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){ log("Web Speech API no disponible."); return; }
   recog=new SR();
-  recog.lang="es-AR";          // o "es-ES"
+  recog.lang="es-ES";          // o "es-ES"
   recog.interimResults=false;
   recog.continuous=true;
 
