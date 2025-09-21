@@ -7,107 +7,119 @@
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
   canvas.p5Canvas{position:fixed;inset:0;display:block}
+  /* por si el navegador te sigue mostrando restos de versiones viejas */
+  #ui,#msg,#out{display:none !important}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
 </head>
 <body>
 <script>
-/* ===== Config ===== */
-const LANG = "es-ES";      // cambia a "es-AR" si preferís
-const TEXT_SIZE = 180;     // tamaño del texto
-const STEP = 6;            // muestreo (px)
-const MAX_PARTS = 1200;    // partículas
+const LANG="es-ES";      // "es-AR" si preferís
+const TEXT_SIZE=180;     // tamaño del texto
+const STEP=6;            // muestreo (px)
+const MAX_PARTS=1200;    // cantidad de partículas
 
-/* ===== Estado ===== */
 let recog, listening=false, texto="DI UNA PALABRA";
 let parts=[], pg;
 
-/* ===== p5 ===== */
 function setup(){
   createCanvas(windowWidth, windowHeight).addClass('p5Canvas');
   pixelDensity(1);
-  pg = createGraphics(width, height); pg.pixelDensity(1);
+  pg=createGraphics(width,height); pg.pixelDensity(1);
   background(0);
-  renderTextToParticles(texto);
+  renderText(texto);
   initSpeech();
 
-  // gesto: primer clic/tap arranca el micrófono
-  window.addEventListener('pointerdown', ()=>{
-    if(recog && !listening){ try{recog.start(); listening=true;}catch(_){} }
-  }, {once:true});
+  // intenta iniciar; si el navegador exige gesto, hacé un clic
+  try{ startMic(); }catch(_){}
+  window.addEventListener('pointerdown', ()=>startMic(), {once:true});
 }
 
 function windowResized(){
   resizeCanvas(windowWidth, windowHeight);
-  pg = createGraphics(width, height); pg.pixelDensity(1);
-  renderTextToParticles(texto);
+  pg=createGraphics(width,height); pg.pixelDensity(1);
+  renderText(texto);
 }
 
-/* ===== Voz ===== */
+/* -------- Voz -------- */
 function initSpeech(){
-  const SR = window.webkitSpeechRecognition || window.SpeechRecognition;
+  const SR=window.webkitSpeechRecognition || window.SpeechRecognition;
   if(!SR) return;
-  recog = new SR();
-  recog.lang = LANG;
-  recog.interimResults = false;   // solo resultados finales
-  recog.continuous = true;
+  recog=new SR();
+  recog.lang=LANG;
+  recog.interimResults=false;   // solo resultados finales
+  recog.continuous=true;
 
-  recog.onresult = e=>{
-    const r = e.results[e.resultIndex];
-    if(!r || !r[0]) return;
-    const t = r[0].transcript.trim();
+  recog.onresult=e=>{
+    const r=e.results[e.resultIndex];
+    if(!r||!r[0])return;
+    const t=r[0].transcript.trim();
     if(!t) return;
-    texto = t.toUpperCase();
-    renderTextToParticles(texto);
+    texto=t.toUpperCase();
+    renderText(texto);
   };
-  recog.onend = ()=>{ if(listening){ try{recog.start();}catch(_){}} };
+  recog.onend=()=>{ if(listening){ try{recog.start();}catch(_){} } };
 }
+function startMic(){ if(recog && !listening){ recog.start(); listening=true; } }
 
-/* ===== Partículas ===== */
-function renderTextToParticles(t){
+/* -------- Partículas -------- */
+function renderText(t){
   pg.clear();
   pg.push();
-  pg.textAlign(CENTER, CENTER);
+  pg.textAlign(CENTER,CENTER);
   pg.textSize(TEXT_SIZE);
   pg.textStyle(BOLD);
   pg.fill(255); pg.noStroke();
-  pg.translate(width/2, height/2);
-  pg.text(t, 0, 0);
+  pg.translate(width/2,height/2);
+  pg.text(t,0,0);
   pg.pop();
   pg.loadPixels();
 
   const targets=[];
-  for(let y=0; y<height; y+=STEP){
-    for(let x=0; x<width; x+=STEP){
-      const i = 4*(y*width + x);
-      if(pg.pixels[i+3] > 128) targets.push(createVector(x,y));
+  for(let y=0;y<height;y+=STEP){
+    for(let x=0;x<width;x+=STEP){
+      const i=4*(y*width+x);
+      if(pg.pixels[i+3]>128) targets.push(createVector(x,y));
     }
   }
-  const total = min(MAX_PARTS, targets.length);
-  while(parts.length < total) parts.push(newPart(random(width), random(height)));
-  if(parts.length > total) parts.length = total;
-  shuffle(targets, true);
-  for(let i=0; i<parts.length; i++) parts[i].target = targets[i].copy();
-}
 
+  const total=min(MAX_PARTS, targets.length);
+  while(parts.length<total) parts.push(newPart(random(width),random(height)));
+  if(parts.length>total) parts.length=total;
+
+  shuffle(targets,true);
+  for(let i=0;i<parts.length;i++) parts[i].target=targets[i].copy();
+}
 function newPart(x,y){
-  return {
-    pos:createVector(x,y),
-    vel:p5.Vector.random2D().mult(random(2)),
-    acc:createVector(0,0),
-    target:createVector(x,y),
-    maxSpeed:8, maxForce:0.6,
-    r:2 + random(1.5)
-  };
+  return {pos:createVector(x,y),
+          vel:p5.Vector.random2D().mult(random(2)),
+          acc:createVector(0,0),
+          target:createVector(x,y),
+          maxSpeed:8,maxForce:0.6,
+          r:2+random(1.5)};
 }
 
 function draw(){
   background(0,40);
   noStroke();
-  const tt = millis()*0.0004;
+  const tt=millis()*0.0004;
   for(const p of parts){
-    const desired = p5.Vector.sub(p.target, p.pos);
-    const d = desired.mag();
-    desired.setMag(d<60 ? map(d,0,60,0,p.maxSpeed) : p.maxSpeed);
-    const steer = p5.Vector.sub(desired, p.vel).limit(p.maxForce);
-    co
+    const desired=p5.Vector.sub(p.target,p.pos);
+    const d=desired.mag();
+    desired.setMag(d<60?map(d,0,60,0,p.maxSpeed):p.maxSpeed);
+    const steer=p5.Vector.sub(desired,p.vel).limit(p.maxForce);
+    const n=noise(p.pos.x*0.005,p.pos.y*0.005,tt);
+    const flow=p5.Vector.fromAngle(map(n,0,1,-PI,PI)).mult(0.15);
+
+    p.acc.set(0,0);
+    p.acc.add(steer).add(flow);
+    p.vel.add(p.acc).limit(p.maxSpeed);
+    p.pos.add(p.vel);
+
+    fill(255, constrain(map(d,0,120,255,40),40,255));
+    circle(p.pos.x,p.pos.y,p.r);
+  }
+}
+</script>
+</body>
+</html>
