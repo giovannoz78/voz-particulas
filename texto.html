@@ -1,136 +1,59 @@
 <!doctype html>
 <html lang="es">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Voz → Partículas</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voz (test)</title>
 <style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  html,body{margin:0;height:100%;background:#000;color:#9cf;font:14px/1.5 system-ui}
   #ui{position:fixed;left:16px;top:16px;z-index:9999}
-  #btn{padding:8px 12px;border-radius:6px;border:0;background:#1e90ff;color:#fff;font-weight:700}
-  #msg{margin-top:6px;color:#9cf;font:12px/1.4 monospace;white-space:pre-wrap;max-width:70vw}
-  #out{position:fixed;left:16px;bottom:16px;z-index:9999;color:#fff;font:700 28px/1.2 system-ui, sans-serif;text-shadow:0 0 10px #08f}
-  canvas.p5Canvas{position:fixed !important;inset:0;z-index:0 !important;display:block}
+  #btn{padding:8px 12px;border:0;border-radius:6px;background:#1e90ff;color:#fff;font-weight:700}
+  #msg{margin-top:8px;white-space:pre-wrap;max-width:70vw}
+  #out{position:fixed;left:16px;bottom:16px;color:#fff;font:700 28px/1.2 system-ui}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
-</head>
-<body>
 <div id="ui">
-  <button id="btn">Iniciar</button>
-  <div id="msg">Permite micrófono y haz clic “Iniciar”.</div>
+  <button id="btn" type="button">Iniciar</button>
+  <div id="msg">Permite micrófono → clic “Iniciar”.</div>
 </div>
 <div id="out">di una palabra</div>
-
 <script>
-let recog, escuchando=false, texto="di una palabra", particles=[], pg;
-const NP=1200, gap=6, tam=160;
-const $btn=document.getElementById('btn'), $msg=document.getElementById('msg'), $out=document.getElementById('out');
-const log=m=>{$msg.textContent=m; console.log(m);};
-const append=m=>{$msg.textContent+="\n"+m; console.log(m);};
+(() => {
+  const btn = document.getElementById('btn');
+  const msg = document.getElementById('msg');
+  const out = document.getElementById('out');
+  const log = t => { msg.textContent = t; console.log(t); };
+  const add = t => { msg.textContent += "\n"+t; console.log(t); };
 
-function setup(){
-  const c=createCanvas(windowWidth, windowHeight);
-  c.addClass('p5Canvas');
-  pg=createGraphics(width,height);
-  background(0);
-  generarParticulasDesdeTexto(texto);
-  initSpeech();
-}
-function windowResized(){
-  resizeCanvas(windowWidth, windowHeight);
-  pg=createGraphics(width,height);
-  generarParticulasDesdeTexto(texto);
-}
-
-function initSpeech(){
   const SR = window.webkitSpeechRecognition || window.SpeechRecognition;
-  if(!SR){ log("Web Speech API no disponible (usa Chrome en https)."); return; }
-  recog = new SR();
+  if(!SR){ log("Web Speech API no disponible (Chrome + https)."); return; }
+  const recog = new SR();
+  let on = false;
+
   recog.lang = "es-ES";          // probá "es-AR" si querés
-  recog.interimResults = true;   // texto en vivo
+  recog.interimResults = true;
   recog.continuous = true;
-  recog.maxAlternatives = 1;
 
-  recog.onstart=()=>log("Escuchando…");
-  recog.onaudiostart=()=>append("Audio ON");
-  recog.onspeechstart=()=>append("Speech ON");
-  recog.onspeechend=()=>append("Speech END");
-  recog.onend=()=>{ append("End"); if(escuchando){ try{recog.start();}catch(_){}} };
-
-  recog.onresult = e=>{
-    const i = e.resultIndex;
-    const res = e.results[i];
-    if(!res || !res[0]) return;
-    const txt = res[0].transcript.trim();
+  recog.onstart = () => log("Escuchando…");
+  recog.onresult = e => {
+    const r = e.results[e.resultIndex];
+    if(!r || !r[0]) return;
+    const txt = r[0].transcript.trim();
     if(!txt) return;
-    $out.textContent = txt;              // ← SIEMPRE verás el texto acá
-    texto = txt.toUpperCase();
-    generarParticulasDesdeTexto(texto);
-    append((res.isFinal?"Final: ":"Interim: ")+txt+" (conf "+(res[0].confidence??0).toFixed(2)+")");
+    out.textContent = txt;
+    add((r.isFinal?"Final: ":"Interim: ")+txt);
   };
+  recog.onerror = e => { add("Error: "+e.error); };
+  recog.onend = () => { add("End"); if(on){ try{recog.start();}catch(_){} } };
 
-  recog.onerror = e=>{
-    append("Error: "+e.error);
-    if(["no-speech","audio-capture","network","aborted"].includes(e.error)){
-      try{recog.stop();}catch(_){}
-      setTimeout(()=>{ if(escuchando) try{recog.start();}catch(_){} }, 700);
+  btn.onclick = () => {
+    if(!on){
+      log("Arrancando… (si pide permiso, Aceptar)"); 
+      on = true; btn.textContent = "Detener";
+      try{ recog.start(); }catch(err){ add("No pude iniciar: "+err.message); }
+    }else{
+      on = false; btn.textContent = "Iniciar";
+      try{ recog.stop(); }catch(_){} log("Detenido.");
     }
   };
-}
-
-$btn.onclick=()=>{
-  if(!recog){ log("Sin soporte de SpeechRecognition."); return; }
-  if(!escuchando){
-    try{recog.abort?.();}catch(_){}
-    try{recog.start(); escuchando=true; $btn.textContent="Detener"; }
-    catch(err){ log("No pude iniciar: "+err.message); }
-  }else{
-    escuchando=false; try{recog.stop();}catch(_){}
-    $btn.textContent="Iniciar"; log("Detenido.");
-  }
-};
-
-function generarParticulasDesdeTexto(t){
-  pg.clear(); pg.pixelDensity(1);
-  pg.push(); pg.background(0,0); pg.textAlign(CENTER,CENTER);
-  pg.textSize(tam); pg.textStyle(BOLD); pg.fill(255); pg.noStroke();
-  pg.translate(width/2,height/2); pg.text(t,0,0); pg.pop(); pg.loadPixels();
-
-  const targets=[];
-  for(let y=0;y<height;y+=gap){
-    for(let x=0;x<width;x+=gap){
-      const i=4*(y*width+x);
-      if(pg.pixels[i+3]>128) targets.push(createVector(x,y));
-    }
-  }
-  const total=min(NP,targets.length);
-  while(particles.length<total) particles.push(nuevaParticula(random(width),random(height)));
-  if(particles.length>total) particles.length=total;
-  shuffle(targets,true);
-  for(let i=0;i<particles.length;i++) particles[i].target=targets[i].copy();
-}
-
-function nuevaParticula(x,y){
-  return {pos:createVector(x,y), vel:p5.Vector.random2D().mult(random(2)),
-    acc:createVector(0,0), target:createVector(x,y), maxSpeed:8, maxForce:0.6, r:2+random(1.5)};
-}
-
-function draw(){
-  background(0,40);
-  noStroke();
-  for(const p of particles){
-    const desired=p5.Vector.sub(p.target,p.pos), d=desired.mag();
-    desired.setMag(d<60?map(d,0,60,0,p.maxSpeed):p.maxSpeed);
-    const steer=p5.Vector.sub(desired,p.vel).limit(p.maxForce);
-    const n=noise(p.pos.x*0.005,p.pos.y*0.005,millis()*0.0004);
-    const flow=p5.Vector.fromAngle(map(n,0,1,-PI,PI)).mult(0.15);
-    p.acc.set(0,0); p.acc.add(steer).add(flow);
-    p.vel.add(p.acc).limit(p.maxSpeed);
-    p.pos.add(p.vel);
-    fill(255, constrain(map(d,0,120,255,40),40,255));
-    circle(p.pos.x,p.pos.y,p.r);
-  }
-}
+})();
 </script>
-</body>
 </html>
