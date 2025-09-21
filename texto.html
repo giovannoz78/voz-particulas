@@ -1,11 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Voz → Partículas</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  #ui{position:fixed;left:16px;top:16px;z-index:9999}
+  #btn{padding:8px 12px;border-radius:6px;border:0;background:#1e90ff;color:#fff;font-weight:600}
+  #msg{margin-top:6px;color:#9cf;font:12px/1.4 monospace;white-space:pre-wrap;max-width:60vw}
+  canvas.p5Canvas{position:fixed !important;inset:0;z-index:0 !important;display:block}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+</head>
+<body>
+<div id="ui">
+  <button id="btn">Iniciar</button>
+  <div id="msg">Permite micrófono → clic “Iniciar”.</div>
+</div>
+
 <script>
 let recog, escuchando=false, texto="di una palabra", particles=[], pg;
 const NP=1200, gap=6, tam=160;
 const $btn=document.getElementById('btn'), $msg=document.getElementById('msg');
-const log=m=>{$msg.textContent=m; console.log(m);};
+const log=m=>{ $msg.textContent=m; console.log(m); };
+const append=m=>{ $msg.textContent += "\n"+m; console.log(m); };
 
 function setup(){
   const c=createCanvas(windowWidth, windowHeight);
+  c.addClass('p5Canvas');
   pg=createGraphics(width,height);
   background(0);
   generarParticulasDesdeTexto(texto);
@@ -18,43 +41,46 @@ function windowResized(){
 }
 
 function initSpeech(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){ log("Web Speech API no disponible."); return; }
-  recog=new SR();
-  recog.lang="es-ES";          // probá "es-AR" si querés
-  recog.interimResults=true;    // ← en vivo
-  recog.continuous=true;
-  recog.maxAlternatives=1;
+  const SR = window.webkitSpeechRecognition || window.SpeechRecognition;
+  if(!SR){ log("Web Speech API no disponible (usa Chrome en https)."); return; }
+  recog = new SR();
+  recog.lang = "es-ES";          // probá "es-AR" si querés
+  recog.interimResults = true;   // resultados en vivo
+  recog.continuous = true;
+  recog.maxAlternatives = 1;
 
-  recog.onstart=()=>log("Escuchando…");
-  recog.onaudiostart=()=>console.log("audio start");
-  recog.onspeechstart=()=>console.log("speech start");
-  recog.onspeechend=()=>console.log("speech end");
-  recog.onend=()=>{ console.log("end"); if(escuchando){ try{recog.start();}catch(_){} } };
+  recog.onstart      = ()=>log("Escuchando…");
+  recog.onaudiostart = ()=>append("Audio ON");
+  recog.onsoundstart = ()=>append("Sound ON");
+  recog.onspeechstart= ()=>append("Speech ON");
+  recog.onspeechend  = ()=>append("Speech END");
+  recog.onaudioend   = ()=>append("Audio END");
+  recog.onnomatch    = ()=>append("No match");
+  recog.onend        = ()=>{ append("End"); if(escuchando){ try{recog.start();}catch(_){}} };
 
-  recog.onresult=e=>{
-    const i = e.resultIndex;          // ← clave: usar el índice del evento
+  recog.onresult = e=>{
+    const i = e.resultIndex;
     const res = e.results[i];
     if(!res || !res[0]) return;
     const txt = res[0].transcript.trim();
     if(!txt) return;
     texto = txt.toUpperCase();
     generarParticulasDesdeTexto(texto);
-    log((res.isFinal ? "Final: " : "Interim: ")+txt+"  (conf "+res[0].confidence.toFixed(2)+")");
+    append((res.isFinal?"Final: ":"Interim: ")+txt+" (conf "+res[0].confidence.toFixed(2)+")");
   };
 
-  recog.onerror=e=>{
-    log("Error: "+e.error);
-    // reintentos básicos
-    if(["no-speech","audio-capture","network"].includes(e.error)){
-      try{ recog.stop(); }catch(_){}
-      setTimeout(()=>{ if(escuchando) try{recog.start();}catch(_){ } }, 600);
+  recog.onerror = e=>{
+    append("Error: "+e.error);
+    // reintento suave en errores comunes
+    if(["no-speech","audio-capture","network","aborted"].includes(e.error)){
+      try{recog.stop();}catch(_){}
+      setTimeout(()=>{ if(escuchando) try{recog.start();}catch(_){} }, 700);
     }
   };
 }
 
 $btn.onclick=()=>{
-  if(!recog){ log("Usa Chrome en https."); return; }
+  if(!recog){ log("Sin soporte de SpeechRecognition."); return; }
   if(!escuchando){
     try{ recog.abort?.(); }catch(_){}
     try{ recog.start(); escuchando=true; $btn.textContent="Detener"; }
@@ -92,19 +118,11 @@ function nuevaParticula(x,y){
 
 function draw(){
   background(0,40);
-  const t=millis()*0.0004;
   noStroke();
   for(const p of particles){
     const desired=p5.Vector.sub(p.target,p.pos), d=desired.mag();
     desired.setMag(d<60?map(d,0,60,0,p.maxSpeed):p.maxSpeed);
     const steer=p5.Vector.sub(desired,p.vel).limit(p.maxForce);
-    const n=noise(p.pos.x*0.005,p.pos.y*0.005,t);
+    const n=noise(p.pos.x*0.005,p.pos.y*0.005,millis()*0.0004);
     const flow=p5.Vector.fromAngle(map(n,0,1,-PI,PI)).mult(0.15);
-    p.acc.set(0,0); p.acc.add(steer).add(flow);
-    p.vel.add(p.acc).limit(p.maxSpeed);
-    p.pos.add(p.vel);
-    fill(255, constrain(map(d,0,120,255,40),40,255));
-    circle(p.pos.x,p.pos.y,p.r);
-  }
-}
-</script>
+    p
